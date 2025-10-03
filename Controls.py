@@ -12,13 +12,16 @@ from Communication import Communication
 from PathPlanning import Waypoints
 from SLAM import Localisation
 from perception import Perception
-from coneperception import ConeDetection
+from coneperception import ConePerception
 
 
 cones = []
 waypointlist, waypointSectors, prevWaypoints = [], [[]], []
 sectorRangeThreshold = 5
 sectorsBlue, sectorsYellow, prevArrCones = [[]], [[]], []
+
+
+    
 #with open(os.path.join(os.path.dirname(__file__), '..','conesShifted.csv'), 'r') as file:
     #csv_reader = csv.reader(file)
     #for row in csv_reader:
@@ -26,8 +29,11 @@ sectorsBlue, sectorsYellow, prevArrCones = [[]], [[]], []
     
 with open("C:\\Users\\Arhan\\Desktop\\FMDV\\FSDS_fm\\src\\Control\\Stanley\\cones.csv", 'r') as file:
     csv_reader = csv.reader(file)
+    next(csv_reader)
     for row in csv_reader:
-        cones.append([(row[0]), float(row[1]),float(row[2])])
+        cones.append([(row[0]),float(row[1]),float(row[2])])
+
+
 
 with open(os.path.join(os.path.dirname(__file__), '..','waypointposn.csv'), 'r') as file:
     csv_reader = csv.reader(file)
@@ -350,66 +356,6 @@ class MPC(Communication):
 
         waypoints.insert(low, waypoint)
 
-    def createMap(self,arrCones):
-            """
-            Creates the map of the cones.
-
-            There is a condition to check if new cones are seen to prevent unnecessary computations.
-            New sectors are created as needed.
-
-            Theory behind mapping: 
-            The track is divided into sectors based on the distance of the cones from the start position of car. 
-            Each sector is a concentric circle, and the region between the two circles is a sector.
-            The sectors are further divided into Blue and Yellow sectors based on the color of the cones.
-            The distance of the cone is divided by the radius of the sector and the integer part is taken to get the sector index.
-
-            Example: 
-            Cone with distance from start position of car = 5.5m divided by sector radius 5m will give index 1. This is correct because the cones 
-            in sector 0 will be the ones with distance less than radius 5m. The cones in sector 1 will be the ones with distance between 5m and 10m.
-
-            If a similar cone is already found in the map, then a weighted average is taken and the map is updated. 
-
-            Args: 
-                arrCones : Array of cones
-        """
-
-            if arrCones == self.prevArrCones:
-                return
-        
-            self.prevArrCones = arrCones
-
-            sectorsBlue = self.sectorsBlue
-            sectorsYellow = self.sectorsYellow
-
-            for con in arrCones:
-                cone = [con[0],con[1],con[2],con[3]]
-                color = con[2]
-
-                coneRange = np.sqrt(cone[0]**2 + cone[1]**2)
-
-                sectorIndex = int(coneRange // self.sectorRangeThreshold)
-
-                if (color == "Blue"):
-                    sectors = sectorsBlue
-                else:
-                    sectors = sectorsYellow
-
-                while (sectorIndex > len(sectors)-1):
-                    sectors.append([])
-            
-                sect = sectors[sectorIndex]
-                sameFound = 0
-                for j in range(len(sect)):
-                    if self.isSame(cone,sect[j]):
-                        sameFound = 1
-                        sect[j] = self.getWeightedAvg(cone,sect[j])
-                        break
-                if sameFound == 0:
-                    sect.append(cone)
-
-            self.sectorsBlue = sectorsBlue
-            self.sectorsYellow = sectorsYellow
-
 
 class Mpc(Communication):
 
@@ -425,7 +371,14 @@ class Mpc(Communication):
         self.waypoints = Waypoints()
         self.localisation = Localisation()
         self.perception = Perception()
+        self.coneperception = ConePerception()
+
+
         self.localisation.CreateMap(cones)
+
+        #self.coneperception.perform_cone_detection() instead called this in main 
+
+
 
         self.t = 0.1
         self.maxIter = 40        
@@ -688,6 +641,12 @@ def main(args=None):
     next_call = time.time()
     try:
         while True:
+
+    # Perform cone detection each frame
+            obj.coneperception.perform_cone_detection()
+
+            # Other logic like planning, control, etc.
+
             obj.MainLoop()
             next_call += timerPeriod
             sleep_time = max(0, next_call - time.time())

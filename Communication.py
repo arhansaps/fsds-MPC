@@ -70,9 +70,11 @@ class Communication():
         self.y = carState.position.y_val
         self.xCheck = [self.x, self.y, self.yaw]
         
-        print("X, Y ",self.x,self.y)
+        #commenting shit for now
+        
+        #print("X, Y ",self.x,self.y)
 
-        print("Current Accel ",carState.linear_acceleration)
+        #print("Current Accel ",carState.linear_acceleration)
 
 
 
@@ -82,7 +84,7 @@ class Communication():
         car_controls = fsds.CarControls()
         #acceleration = -acceleration
         throttle, brake = self.acceleration_to_throttle_brake(acceleration)
-        print(f"Inputted throttle : {throttle} brake : {brake}")
+        #print(f"Inputted throttle : {throttle} brake : {brake}")
         car_controls.steering = -steering_angle
         car_controls.throttle = throttle
         car_controls.brake = brake

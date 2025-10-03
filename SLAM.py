@@ -110,7 +110,7 @@ class Localisation():
         return DistanceFromLeft, DistanceFromRight
 
     def IsSame(self, cone1, cone2):
-        dist = np.sqrt((cone1[0]- cone2[0])**2 + (cone1[1] - cone2[1])**2)
+        dist = np.sqrt((cone1[1]- cone2[1])**2 + (cone1[2] - cone2[2])**2)
         if dist < 1.5:
             return True
         else:
@@ -123,21 +123,23 @@ class Localisation():
         w_avg.append(cone2[1]*w1 + cone1[1]*w2)
         return w_avg
 
-    def CreateMap(self,arrCones):
+    def CreateMap(self,cones):
 
-        if arrCones == self.prevArrCones:
+        if cones == self.prevArrCones:
             print("No new cones found")
             return
         
-        self.prevArrCones = arrCones
+        self.prevArrCones = cones
 
         sectorsBlue = self.sectorsBlue
         sectorsYellow = self.sectorsYellow
 
-        for cone in arrCones:
-            color = cone[2]
+        for cone in cones:
+            color = cone[0]
+            x = float(cone[1])
+            y = float(cone[2])
 
-            coneRange = np.sqrt(cone[0]**2 + cone[1]**2)
+            coneRange = np.sqrt((x**2) + (y**2))
             sectorIndex = int(coneRange // self.sectorRangeThreshold)
 
             if (color == "blue"):
