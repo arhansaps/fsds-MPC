@@ -81,14 +81,52 @@ class Mpc(Communication):
         """From your working code"""
         return np.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
 
-    def rotate_point(self, xCheck, cone): 
-        """EXACT from your working code"""
+    """def rotate_point(self, xCheck, cone): 
+        EXACT from your working code
         theta = xCheck[2]
         rotationMat = np.array([[np.cos(theta), -np.sin(theta)], 
                         [np.sin(theta), np.cos(theta)]], dtype="float")
         newCone = rotationMat.dot(cone[:2])
         newCone = newCone.flatten()
-        return newCone[0], newCone[1]
+        return newCone[0], newCone[1]"""
+    
+    # modified rotate point
+    def rotate_point(self, xCheck, point):
+        theta = xCheck[2]
+        dx = point[0] - xCheck[0]
+        dy = point[1] - xCheck[1]
+    
+        # vehicle frame
+        x_veh = dx * np.cos(theta) + dy * np.sin(theta)
+        y_veh = -dx * np.sin(theta) + dy * np.cos(theta)
+    
+        return x_veh, y_veh
+    
+    #added new function, og predict motion was some bullshit idk
+    def predict_motion(self, x_current, velocity, steering, dt):
+
+        x, y, theta = x_current
+        
+        # calculate heading rate
+        if abs(steering) < 1e-6:
+            theta_new = theta
+            x_new = x + velocity * dt * np.cos(theta)
+            y_new = y + velocity * dt * np.sin(theta)
+        else:
+            
+            theta_dot = velocity * np.tan(steering) / WHEELBASE
+            theta_new = theta + theta_dot * dt
+            
+            # updated position using avg
+            avg_theta = (theta + theta_new) / 2.0
+            x_new = x + velocity * dt * np.cos(avg_theta)
+            y_new = y + velocity * dt * np.sin(avg_theta)
+    
+        
+        theta_new = (theta_new + np.pi) % (2 * np.pi) - np.pi
+        
+        return [x_new, y_new, theta_new]
+
 
     def getWaypointSign(self, xCheck, prevWaypoint, currWaypoint):
         """From your working code"""
@@ -96,7 +134,7 @@ class Mpc(Communication):
         perpLineSlope = -1 / slopeWaypoints
         a, b, c = perpLineSlope, -1, currWaypoint[1] - perpLineSlope * currWaypoint[0]
         temp = a * xCheck[0] + b * xCheck[1] + c
-        currSign = temp / abs(temp)
+        currSign = temp / (abs(temp) + 1e-6)
         return currSign
 
     def checkIfWaypointCrossed(self, xCheck, prevWaypoint, currWaypoint, waypointSign):
@@ -126,12 +164,20 @@ class Mpc(Communication):
         carSteer = 0
 
         for i in range(5):
-            carSteer += min(DT * np.pi, abs(x[1])) * steerSign
-            
-            # SIMPLIFIED: Global frame motion model
+
+            #making changes here
+
+            #carSteer += min(DT * np.pi, abs(x[1])) * steerSign
+            #dt was added twice here hence calculations were very small
+            steering = x[1]
+            velocity = x[0]
+
+            xCheck = self.predict_motion(xCheck, velocity, steering, DT)
+
+            """SIMPLIFIED: Global frame motion model
             xCheck[2] += carSteer * DT  # Update heading
             xCheck[0] += DT * x[0] * np.cos(xCheck[2])  # Update x
-            xCheck[1] += DT * x[0] * np.sin(xCheck[2])  # Update y
+            xCheck[1] += DT * x[0] * np.sin(xCheck[2])  # Update y"""
 
             if (self.checkIfWaypointCrossed(xCheck, prevWaypoint, currWaypoint, waypointSign)):
                 ind = (ind + 1) % len(self.waypoints.waypoints)
@@ -165,12 +211,18 @@ class Mpc(Communication):
         carSteer = 0
 
         for i in range(5):  # Reduced from 10 to 5
-            carSteer += min(DT * np.pi, abs(x[1])) * steerSign
+            #carSteer += min(DT * np.pi, abs(x[1])) * steerSign
+
+            steering = x[1]
+            velocity = x[0]
             
-            # SIMPLIFIED: Global frame motion
+            """SIMPLIFIED: Global frame motion
             xCheck[2] += carSteer * DT
             xCheck[0] += DT * x[0] * np.cos(xCheck[2])
-            xCheck[1] += DT * x[0] * np.sin(xCheck[2])
+            xCheck[1] += DT * x[0] * np.sin(xCheck[2])"""
+
+            xCheck = self.predict_motion(xCheck, velocity, steering, DT)
+
 
             if (self.checkIfWaypointCrossed(xCheck, prevWaypoint, currWaypoint, waypointSign)):
                 ind = (ind + 1) % len(self.waypoints.waypoints)
@@ -187,8 +239,8 @@ class Mpc(Communication):
         """Steering smoothness"""
         return abs(x[1] - 0)
 
-    def theta_next_function(self, x):
-        """SIMPLIFIED: Heading error to next waypoint (car frame)"""
+    """def theta_next_function(self, x):
+        SIMPLIFIED: Heading error to next waypoint (car frame)
         if self.ind >= len(self.waypoints.waypoints):
             return 1000
             
@@ -201,7 +253,25 @@ class Mpc(Communication):
         )
         thetaTemp = abs(np.arctan2(waypointCarFrame[1], waypointCarFrame[0]))
         
-        return thetaTemp
+        return thetaTemp"""
+    
+    def theta_next_function(self, x):
+        """FIXED: Heading error to next waypoint"""
+        if self.ind >= len(self.waypoints.waypoints):
+            return 1000
+            
+        nextWaypoint = self.waypoints.waypoints[(self.ind + 1) % len(self.waypoints.waypoints)]
+        
+        #heading
+        dx = nextWaypoint[0] - self.x
+        dy = nextWaypoint[1] - self.y
+        desired_heading = np.arctan2(dy, dx)
+    
+        heading_error = desired_heading - self.yaw
+        
+        heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
+        
+        return abs(heading_error)
 
     def mpc_cost_function(self, x):
         """EXACT cost function from your working code"""
@@ -213,21 +283,24 @@ class Mpc(Communication):
     def Calculate(self):
         """SIMPLIFIED: Calculate control"""
         try:
-            # Find current waypoint index
+            
             curr_pos = [self.x, self.y]
             min_dist = float('inf')
             
+            #made changes here, inconsistency between yaw idk why 360-yaw was added i added yaw normally
             for i, waypoint in enumerate(self.waypoints.waypoints):
                 dist = self.euclidean_dist(curr_pos, waypoint)
                 waypoint_car_frame = self.rotate_point(
-                    [0, 0, 2 * np.pi - self.yaw],
-                    [waypoint[0] - curr_pos[0], waypoint[1] - curr_pos[1]]
+                    #[0, 0, 2 * np.pi - self.yaw],
+                    [self.x,self.y,self.yaw]
+                    #[waypoint[0] - curr_pos[0], waypoint[1] - curr_pos[1]]
+                    ,waypoint
                 )
                 if waypoint_car_frame[0] > 0 and dist < min_dist:
                     min_dist = dist
                     self.ind = i
 
-            # Calculate waypoint sign
+            #sign
             if len(self.waypoints.waypoints) > 1:
                 currWaypoint = self.waypoints.waypoints[self.ind]
                 prevWaypoint = self.waypoints.waypoints[self.ind - 1]
@@ -237,9 +310,9 @@ class Mpc(Communication):
                     currWaypoint
                 )
 
-            # SIMPLIFIED: MPC optimization
+            
             initial_guess = np.array([3, 0])
-            bounds = Bounds([2, -MAXSTEER], [self.maxVel, MAXSTEER])  # FIXED bounds
+            bounds = Bounds([2, -MAXSTEER], [self.maxVel, MAXSTEER])  
 
             if self.previous_result is None:
                 self.previous_result = np.array([3, 0])
@@ -254,17 +327,17 @@ class Mpc(Communication):
                 result = minimize(self.mpc_cost_function, initial_guess, method='SLSQP', bounds=bounds)
 
             if not result.success:
-                print("Optimization failed, using previous result")
+                print("use previous")
                 desiredVelocity = self.previous_result[0]
                 steerAngle = self.previous_result[1]
             else:
                 desiredVelocity = result.x[0]
                 steerAngle = result.x[1]
 
-            # Apply steering limits
+            #steering limits
             steerAngle = np.clip(steerAngle, -MAXSTEER, MAXSTEER)
             
-            # Convert to acceleration using PID
+            #using pid control
             accel = self.pidControl(desiredVelocity)
             
             print(f"Target Vel: {desiredVelocity:.2f}, Steer: {steerAngle:.3f}, Accel: {accel:.3f}")
